@@ -3,37 +3,54 @@ import CurrencyInput from "@/components/CurrencyInput";
 import Input from "@/components/Input";
 import PageHeader from "@/components/PageHeader";
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
-import { Alert, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, StatusBar, View } from "react-native";
 
 import { useTargetDatabase } from "@/database/useTargetDatabase";
 
-export default function Index(){
+export default function Index() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [name, setName] = useState("");
     const [amount, setAmount] = useState(0);
 
-    const params = useLocalSearchParams<{id?: string}>()
+    const params = useLocalSearchParams<{ id?: string }>()
     const targetDatabase = useTargetDatabase()
 
-    function handleSave(){
-        if(!name.trim() || amount <= 0){
+    function handleSave() {
+        if (!name.trim() || amount <= 0) {
             return Alert.alert("Atenção", "Preencha nome e o valor precisa ser maior que zero.")
         }
 
         setIsProcessing(true)
 
-        if(params.id){
-
+        if (params.id) {
+            update();
         } else {
             create();
         }
 
     }
 
-    async function create(){
+    async function update() {
         try {
-            await targetDatabase.create({name, amount})
+            await targetDatabase.update({ id: Number(params.id), name, amount })
+            Alert.alert('Sucesso', 'Meta atualizada com sucesso', [
+                {
+                    text: 'Ok',
+                    onPress: () => router.back()
+                }
+            ])
+        } catch (error) {
+            Alert.alert('Erro', 'Não foi possível atualizar a meta.')
+            console.log(error)
+        } finally{
+            setIsProcessing(false)
+        }
+    }
+
+    async function create() {
+        try {
+            await targetDatabase.create({ name, amount })
             Alert.alert('Nova Meta', 'Meta criada com sucesso!', [
                 {
                     text: "Ok",
@@ -45,23 +62,71 @@ export default function Index(){
             console.log(error);
             setIsProcessing(false)
         }
-    } 
+    }
+
+    async function fetchDetails(id: number) {
+        try {
+            const response = await targetDatabase.show(id)
+            setName(response.name)
+            setAmount(response.amount)
+        } catch (error) {
+            Alert.alert('Erro', 'Não foi possível carregar os detalhes da meta.')
+            console.log(error)
+        }
+    }
+
+    async function handleRemove(){
+        if(!params.id) return;
+
+        Alert.alert("Remover", "Deseja realmente remover?", [
+            {
+                text: 'Cancelar',
+                style: 'cancel'
+            },
+            {
+                text: 'Confirmar',
+                onPress: remove
+            }
+        ])
+    }
+
+    async function remove(){
+        try {
+            setIsProcessing(true)
+            await targetDatabase.remove(Number(params.id))
+            Alert.alert('Meta', 'Meta removida com sucesso!', [
+                {
+                    text: 'Ok',
+                    onPress: () => router.replace('/')
+                }
+            ])
+        } catch (error) {
+            Alert.alert('Erro', 'Não foi possível remover a meta.')
+        }
+    }
+
+    useEffect(() => {
+        if (params.id) {
+            fetchDetails(Number(params.id))
+        }
+    }, [params.id])
 
     return (
-        <View style={{flex: 1, padding: 24}}>
+        <View style={{ flex: 1, padding: 24 }}>
+            <StatusBar barStyle='dark-content'/>
 
-            <PageHeader title="Meta" subtitle="Economize para alcançar sua meta financeira."/>
+            <PageHeader title="Meta" subtitle="Economize para alcançar sua meta financeira." rightButton={params.id ? {icon: 'delete', onPress: handleRemove} : undefined}/>
 
-            <View style={{marginTop: 32, gap: 24}}>
-                
-                <Input label="Nome da meta" placeholder="Ex: Viagem para praia, Apple Watch" onChangeText={setName} value={name}/>
+            <View style={{ marginTop: 32, gap: 24 }}>
 
-                <CurrencyInput label="Valor alvo (R$)" value={amount} onChangeValue={setAmount}/>
+                <Input label="Nome da meta" placeholder="Ex: Viagem para praia, Apple Watch" onChangeText={setName} value={name} />
 
-                <Button title="Salvar" onPress={handleSave} isProcessing={isProcessing}/>
+                <CurrencyInput label="Valor alvo (R$)" value={amount} onChangeValue={setAmount} />
+
+                <Button title="Salvar" onPress={handleSave} isProcessing={isProcessing} />
             </View>
 
-           
+
 
         </View>
     )

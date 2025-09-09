@@ -1,5 +1,5 @@
 import { Button } from "@/components/Button";
-import { HomeHeader } from "@/components/HomeHeader";
+import { HomeHeader, HomeHeaderProps } from "@/components/HomeHeader";
 import { List } from "@/components/List";
 import Target, { TargetProps } from "@/components/Target";
 import { router, useFocusEffect } from "expo-router";
@@ -7,29 +7,27 @@ import { useCallback, useState } from "react";
 import { Alert, StatusBar, View } from "react-native";
 
 import { Loading } from "@/components/Loading";
+
 import { useTargetDatabase } from "@/database/useTargetDatabase";
-
-const summary = {
-    total: 'R$ 2.680,00',
-    input: { label: 'Entradas', value: 'R$ 6,184.90' },
-    output: { label: 'Saídas', value: 'R$ 6,184.90' }
-}
-
+import { useTransactionsDatabase } from "@/database/useTransactionsDatabase";
+import { numberToCurrency } from "@/utils/numberToCurrency";
 
 export default function Index() {
     const [isFetching, setisFetching] = useState(true);
     const targetDatabase = useTargetDatabase()
+    const transactionsDatabase = useTransactionsDatabase()
     const [targets, setTargets] = useState<TargetProps[]>([])
+    const [summary, setSummary] = useState<HomeHeaderProps>()
 
     async function fetchTargets(): Promise<TargetProps[]> {
         try {
-            const response = await targetDatabase.listBySavedValue()
+            const response = await targetDatabase.listByPercentageValue()
             return response.map((item) => ({
                 id: String(item.id),
                 name: item.name,
-                current: String(item.current),
+                current: numberToCurrency(item.current),
                 percentage: item.percentage.toFixed(0) + "%",
-                target: String(item.amount)
+                target: numberToCurrency(item.amount)
             }))
 
         } catch (error) {
@@ -38,21 +36,44 @@ export default function Index() {
         }
     }
 
-    async function FetchData(){
-        const targetDataPromise = fetchTargets()
+    async function fetchSummary(): Promise<HomeHeaderProps> {
+        try {
+            const response = await transactionsDatabase.summary()
 
-        const [targetData] = await Promise.all([targetDataPromise])
+            return {
+                total: numberToCurrency(response.input + response.output),
+                input: {
+                    label: 'Entradas',
+                    value: numberToCurrency(response.input),
+                },
+                output: {
+                    label: 'Saídas',
+                    value: numberToCurrency(response.output)
+                }
+            }
+        } catch (error) {
+            Alert.alert('Erro', 'Não foi possível carregar o resumo.')
+            console.log(error)
+        }
+    }
+
+    async function fetchData() {
+        const targetDataPromise = fetchTargets()
+        const dataSummaryPromise = fetchSummary() 
+
+        const [targetData, dataSummary] = await Promise.all([targetDataPromise, dataSummaryPromise])
         setTargets(targetData)
+        setSummary(dataSummary)
         setisFetching(false)
     }
 
     useFocusEffect(
         useCallback(() => {
-            FetchData()
+            fetchData()
         }, [])
     )
 
-    if(isFetching){
+    if (isFetching) {
         return <Loading />
     }
 
